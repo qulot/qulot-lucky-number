@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+
+<html lang="en" class="dark">
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <link rel="icon" type="image/x-icon" href="https://qulot.io/logo-icon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+    <title>{{context.title}}</title>
+</head>
+
+<body class="dark:bg-gray-900 h-screen">
+    <main id="app" class="container mx-auto flex flex-col h-full space-y-4">
+        <div class="px-4 space-y-4">
+            <!-- Header -->
+            <div class="flex items-center pt-4">
+                <h1 class="text-2xl lg:text-3xl text-slate-300">{{context.title}}</h1>
+                <a href="https://docs.qulot.io/developers/api/lucky-number-qrng" class="ml-auto mr-0">
+                    <img src="https://qulot.io/logo-icon.svg" />
+                </a>
+            </div>
+
+            <!-- Log file -->
+            <div class="flex items-center">
+                <h2 class="text-xl lg:text-2xl text-slate-400 overline decoration-4 decoration-pink-500">
+                    {{context.log_file}}
+                </h2>
+            </div>
+
+            <!-- Log tail -->
+            <div class="flex items-center space-x-3">
+                <label class="block tracking-wide text-slate-400 font-bold" for="grid-state">
+                    Log Tail
+                </label>
+                <div class="relative">
+                    <select
+                        class="block appearance-none w-full bg-gray-200 border border-gray-200 text-gray-700 py-2 px-4 pr-8 rounded leading-tight focus:outline-none focus:bg-white focus:border-gray-500"
+                        id="grid-state" v-model="selectedLogsTail" @change="onLogTailChange">
+                        <option v-for="(op) in logsTailOptions" :key="op" :value="op">-[[op]] Rows</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                        <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                            <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Log list -->
+        <div class="flex items-center flex-1 overflow-y-auto max-h-full md:px-4">
+            <div
+                class="block w-full text-sm rounded-t-xl border bg-gray-700 border-gray-600 text-white h-full overflow-y-auto overflow-x-auto lg:overflow-x-hidden">
+                <table class="w-full">
+                    <thead class="sticky top-0 bg-gray-700">
+                        <tr class="text-left">
+                            <th class="p-2">Time</th>
+                            <th class="p-2">Severity</th>
+                            <th class="p-2">Caller</th>
+                            <th class="p-2">Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(log, i) in logs" :key="i">
+                            <template v-if="log.time && log.severity && log.caller && log.message">
+                                <td class="p-2 whitespace-nowrap">[[log.time]]</td>
+                                <td class="p-2">
+                                    <span
+                                        class="text-xs font-medium px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800"
+                                        :class="{
+                                            'bg-green-100 text-green-800': log.severity == 'INFO',
+                                            'bg-red-100 text-red-800': log.severity == 'ERROR',
+                                            'bg-purple-100 text-purple-800': log.severity == 'DEBUG',
+                                            'bg-yellow-100 text-yellow-800': log.severity == 'WARNING',
+                                        }">
+                                        [[log.severity]]
+                                    </span>
+                                </td>
+                                <td class="p-2">[[log.caller]]</td>
+                                <td class="p-2">[[log.message]]</td>
+                            </template>
+                            <template v-else>
+                                <td colspan="4" class="p-2">[[log.message]]</td>
+                            </template>
+                        </tr>
+                        <tr v-if="logs.length == 0">
+                            <td colspan="4" class="p-2">There aren't any logs</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+
+    <script>
+        var vm = new Vue({
+            el: '#app',
+            delimiters: ['[[', ']]'],
+            data: {
+                logs: [],
+                logsTailOptions: [10, 20, 50, 100],
+                selectedLogsTail: 10
+            },
+            created() {
+                this.connect();
+            },
+            methods: {
+                getWsEndpoint() {
+                    let wsEndpoint = window.location.origin
+                        .replace('http://', 'ws://')
+                        .replace('https://', 'wss://');
+                    return `${wsEndpoint}/log/stream-ws?tail=${this.selectedLogsTail}`;
+                },
+                onWsMessage(event) {
+                    const log_lines = JSON.parse(event.data);
+                    if (log_lines?.length) {
+                        this.logs = log_lines.map(log => this.parseLog(log));
+                    } else {
+                        this.logs = [];
+                    }
+                },
+                parseLog(log) {
+                    console.log(log);
+                    try {
+                        const { severity, time, caller, message } = JSON.parse(log);
+                        if (severity && time && caller && caller && message) {
+                            return {
+                                severity,
+                                caller,
+                                message,
+                                time: moment(time).format('MM/DD/YYYY hh:mm:ss')
+                            };
+                        }
+                    } catch (error) {
+                        console.log(error);
+                    }
+
+                    return { message: log };
+                },
+                connect() {
+                    this.ws = new WebSocket(this.getWsEndpoint());
+                    this.ws.onmessage = this.onWsMessage;
+                },
+                disconnect() {
+                    if (this.ws) {
+                        this.ws.close();
+                    }
+                },
+                onLogTailChange() {
+                    this.disconnect();
+                    this.connect();
+                },
+            }
+        })
+    </script>
+</body>
+
+</html>

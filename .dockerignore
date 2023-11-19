@@ -1,0 +1,5 @@
+docs
+.vscode
+!Pipfile
+!Pipfile.lock
+*.log
